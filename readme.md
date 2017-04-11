@@ -13,3 +13,6 @@
 4. 读取数据返回web  暂缓
 5. 日志
 6. 异步处理
+
+##删除所有.pyc文件的命令
+```find 绝对路径  -type f -name  "*.pyc"  | xargs -i -t rm -f {}```
