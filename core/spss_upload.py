@@ -2,12 +2,15 @@
 # -*- coding:utf-8 -*-
 
 import json
+import datetime
+import pickle
 import savReaderWriter
 from common.base import MongoDb, Config
 import time, os
 from collections import OrderedDict
 import pymysql
 from models.create_tables import create_tables, writer_tables, create_infor_tables
+from common.base import my_datetime
 
 vartypes = []  # ['A20', 'F8.2', 'F8', 'DATETIME20'] spss类型
 width = []  # ['20', '8.2', '8', '20'] 宽度
@@ -28,12 +31,25 @@ def read_sav(filepath):
         return read.formats, read.varNames, read.varLabels, read.valueLabels
 
 
-def writer_data(filepath, filename):
+def writer_data(filepath, filename, valuetypes):
     res = writer_tables()
     res.conn()
+
     try:
-        with savReaderWriter.SavReader(filepath) as read:
+        with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
+            # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
+            print valuetypes
+            print read[0]
+            my_time = my_datetime()
             for i in read:
+                for j in range(len(valuetypes)):
+                    # 数据库不认unicode所以要转换下
+                    # 将varchar进行json存如数据库
+                    if valuetypes[j] == "DATETIME":
+                        become_time = my_time.become_str(i[j])
+                        i[j] = become_time
+                    elif valuetypes[j] == "VARCHAR":
+                        i[j] = json.dumps(i[j])
                 res.run_sql(filename, i)
     except Exception as e:
         print e
@@ -73,6 +89,13 @@ def float_data(width):
             float_width.append(0)
     return float_width
 
+def valuelables_decode(unicode_dict):
+    if isinstance(unicode_dict, dict):
+        for i in unicode_dict:
+            unicode_dict[i] = unicode_dict[i].decode('utf-8')
+        return unicode_dict
+    elif isinstance(unicode_dict, str):
+        return unicode_dict.decode('utf-8')
 
 class create_insert_sub_table(object):
     def __init__(self):
@@ -95,7 +118,7 @@ class create_insert_sub_table(object):
             return 5001
         return 2000
 
-    def insert_data(self, filename, varnames, valuetypes, width, float_width, varLabels, valueLabels):
+    def insert_data(self, filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes):
         res = create_infor_tables()
         res.conn()
 
@@ -107,12 +130,33 @@ class create_insert_sub_table(object):
             data.append(float_width[i])
             data.append(json.dumps(varLabels[varnames[i]]))
             if varnames[i] in valueLabels:
-                data.append(json.dumps(valueLabels[varnames[i]]))
+                unicode_dict = valuelables_decode(valueLabels[varnames[i]])
+                json_unicode_dict = pickle.dumps(unicode_dict)
+                # print json_unicode_dict
+                data.append(json_unicode_dict)
             else:
                 data.append(0)
+            data.append(vartypes[i])
+            data.append("")
+            data.append("")
             sql = res.insert_sql(filename, data)
             res.run_sql(sql)
         res.close()
+
+def cheng_time(dtdt):
+    # 将时间类型转换成时间戳
+    if isinstance(dtdt, datetime.datetime):
+        timestamp = time.mktime(dtdt.timetuple())
+        return timestamp
+
+    elif isinstance(dtdt, str):
+        a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d, %H:%M:%S, %w")
+        timestamp = time.mktime(a_datetime.timetuple())
+        return timestamp
+
+    elif isinstance(dtdt, float):
+        return dtdt
+
 
 
 def main(filename):
@@ -140,8 +184,15 @@ def main(filename):
     ret1 = create_insert_sub_table().create_table(filename)
 
     # 写入数据
-    writer_data(filepath, filename)
-    create_insert_sub_table().insert_data(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels)
+    writer_data(filepath, filename, valuetypes)
+    for i in range(len(vartypes)):
+        if vartypes[i].startswith("F"):
+            if vartypes[i].split(".")[1:]:
+                pass
+            else:
+                vartypes[i] = vartypes[i] + ".0"
+    create_insert_sub_table().insert_data(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes)
+    print vartypes
 
     if ret==2000 and ret1 == 2000:
         return ret
@@ -153,10 +204,3 @@ if __name__ == '__main__':
     filename = "1111.sav"
     main(filename)
 
-    # a = {"a": '\xa3\xc62.1\xa1\xa1\xc7\xeb\xb8\xf9\xbe\xdd\xc4\xe3\xb5\xc4\xca\xb5\xbc\xca\xc7\xe9\xbf\xf6\xa3\xac\xd4\xda\xcf\xc2\xc1\xd0\xc3\xe8\xca\xf6\xd6\xd0\xa3\xac\xd1\xa1\xd4\xf1\xb7\xfb\xba\xcf\xc4\xe3\xb5\xc4\xb3\xcc\xb6\xc8\xa3\xac\xb2\xa2\xd1\xa1\xd4\xf1\xcf\xe0\xd3\xa6\xd1\xa1\xcf\xee\xa1\xa3HK5 \xce\xd2\xbe\xad\xb3\xa3\xb0\xd1\xd7\xd4\xbc\xba\xb5\xc4\xb8\xf6\xc8\xcb\xd0\xc5\xcf\xa2\xb8\xe6\xcb\xdf\xb2\xa2\xb2\xbb\xca\xec\xcf\xa4\xb5\xc4\xc8\xcb'}
-    # b = '\xa3\xc62.1\xa1\xa1\xc7\xeb\xb8\xf9\xbe\xdd\xc4\xe3\xb5\xc4\xca\xb5\xbc\xca\xc7\xe9\xbf\xf6\xa3\xac\xd4\xda\xcf\xc2\xc1\xd0\xc3\xe8\xca\xf6\xd6\xd0\xa3\xac\xd1\xa1\xd4\xf1\xb7\xfb\xba\xcf\xc4\xe3\xb5\xc4\xb3\xcc\xb6\xc8\xa3\xac\xb2\xa2\xd1\xa1\xd4\xf1\xcf\xe0\xd3\xa6\xd1\xa1\xcf\xee\xa1\xa3HK5 \xce\xd2\xbe\xad\xb3\xa3\xb0\xd1\xd7\xd4\xbc\xba\xb5\xc4\xb8\xf6\xc8\xcb\xd0\xc5\xcf\xa2\xb8\xe6\xcb\xdf\xb2\xa2\xb2\xbb\xca\xec\xcf\xa4\xb5\xc4\xc8\xcb'
-    # # print a
-    # print b
-    # 下周来需要做的就是：
-    # 1. 存入数据
-    # 2. 创建另一张表并存入标签信息
