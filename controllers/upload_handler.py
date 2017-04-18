@@ -5,7 +5,7 @@ import tornado
 import json
 import os
 from common.base import result
-from core.spss_data import main
+from core.spss_upload import main
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):

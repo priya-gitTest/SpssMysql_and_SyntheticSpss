@@ -3,9 +3,12 @@
 
 import ConfigParser
 import os
+import datetime
+import time
 import pymongo
 # import MySQLdb
 import pymysql
+from common.log import my_log
 
 
 class Config(object):
@@ -29,7 +32,6 @@ class Config(object):
 
 
 class MongoDb(object):
-
     def __init__(self, host, port, user=None, password=None):
         self._db_host = host
         self._db_port = int(port)
@@ -51,6 +53,7 @@ class MongoDb(object):
         if self.conn:
             self.conn.close()
             self.conn = None
+
 
 # python 2.7可以用这个
 # class My_Mysql(object):
@@ -79,6 +82,37 @@ class MongoDb(object):
 
 
 class My_Pymysql(object):
+    """
+    Parameters:
+
+        -------
+        connecta:
+                pass
+
+        run_manysql:
+                pass
+
+        select: fetch ("all", "one")
+
+        close: pass
+
+
+    Basic usage:
+        ---------------------------------
+        if __name__ == '__main__':
+
+            ret = Config().get_content("sub_table")
+            print(ret)
+            ret = My_Pymysql(**ret)
+            sql = "select * from `1111.sav`"
+            ret.connecta()
+            print ret.select(sql)
+            ret.close()
+
+        ----------------------------------
+
+    """
+
     def __init__(self, host, port, user, password, db_name):
         self._db_host = host
         self._db_port = int(port)
@@ -90,10 +124,10 @@ class My_Pymysql(object):
         # print [self._db_host,self._db_port, self._user, self._password, self._db]
 
     def connecta(self):
-        self.conn = pymysql.connect(host=self._db_host, port=self._db_port, user=self._user, passwd=self._password, db=self._db)
-        self.conn.cursor()
-        self.cursor = self.conn.cursor()
-        return self.conn.cursor()
+        self.conn = pymysql.connect(host=self._db_host, port=self._db_port, user=self._user, passwd=self._password,
+                                    db=self._db)
+        # self.conn.cursor()
+        self.cursor = self.conn.cursor(cursor=pymysql.cursors.DictCursor)
 
     def run_sql(self, sql):
         cursor = self.connecta()
@@ -101,8 +135,24 @@ class My_Pymysql(object):
         self.conn.commit()
 
     def run_manysql(self, sql):
-        self.cursor.execute(sql)
-        self.conn.commit()
+        try:
+            self.cursor.execute(sql)
+            self.conn.commit()
+        except Exception as e:
+            my_log.error(e)
+            return 5002
+
+    def select_sql(self, sql, fetch="all"):
+        try:
+            self.cursor.execute(sql)
+            self.conn.commit()
+            if fetch == "all":
+                return self.cursor.fetchall()
+            elif fetch == "one":
+                return self.cursor.fetchone()
+        except Exception as e:
+            my_log.error(e)
+            return 5002
 
     def close(self):
         if self.conn:
@@ -139,17 +189,103 @@ def result(status, value):
     else:
         message = u"未知错误"
     return {
-        "statuscode":status,
+        "statuscode": status,
         "statusmessage": message,
         "value": value
     }
 
 
-if __name__ == '__main__':
+class my_datetime():
+    """
+    Basic usage:
 
-    ret = Config().get_content("mongo")
-    print(ret)
-    ret = My_Pymysql(**ret)
-    sql = ""
-    ret.run_sql(sql)
-    ret.close()
+        a = datetime.datetime(2016, 9, 21, 13, 42, 8)
+        b = "2016-11-15 15:32:12"
+        c = u'2016-09-21 13:37:34'
+        print type(c)
+        d = 1474436826.0
+        e = 13710788676.0
+        ret = my_datetime()
+        res = ret.become_datetime(e)
+        print res
+        print type(res)
+    """
+
+    def __init__(self):
+        # 缺少对utc时间的判断
+        pass
+
+    def become_timestamp(self, dtdt):
+        # 将时间类型转换成时间戳
+        if isinstance(dtdt, datetime.datetime):
+            timestamp = time.mktime(dtdt.timetuple())
+            return timestamp
+
+        elif isinstance(dtdt, str):
+            if dtdt.split(" ")[1:]:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d  %H:%M:%S")
+                timestamp = time.mktime(a_datetime.timetuple())
+            else:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d")
+                timestamp = time.mktime(a_datetime.timetuple())
+            return timestamp
+
+        elif isinstance(dtdt, float):
+            return dtdt
+
+        elif isinstance(dtdt, unicode):
+            if dtdt.split(" ")[1:]:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d %H:%M:%S")
+                timestamp = time.mktime(a_datetime.timetuple())
+            else:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d")
+                timestamp = time.mktime(a_datetime.timetuple())
+            return timestamp
+
+    def become_datetime(self, dtdt):
+        # 将时间类型转换成datetime类型
+        if isinstance(dtdt, datetime.datetime):
+            return dtdt
+
+        elif isinstance(dtdt, str):
+            if dtdt.split(" ")[1:]:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d %H:%M:%S")
+            else:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d")
+            return a_datetime
+
+        elif isinstance(dtdt, float):
+            # 把时间戳转换成datetime类型
+            a_datetime = datetime.datetime.fromtimestamp(dtdt)
+            return a_datetime
+
+        elif isinstance(dtdt, unicode):
+            if dtdt.split(" ")[1:]:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d %H:%M:%S")
+            else:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d")
+            return a_datetime
+
+    def become_str(self, dtdt):
+        # 把时间类型转换成字符串
+        if isinstance(dtdt, datetime.datetime):
+            a_datetime = dtdt.strftime("%Y-%m-%d %H:%M:%S")
+            return a_datetime
+
+        elif isinstance(dtdt, str):
+            return dtdt
+
+        elif isinstance(dtdt, float):
+            a_datetime_local = datetime.datetime.fromtimestamp(dtdt)
+            a_datetime = a_datetime_local.strftime("%Y-%m-%d %H:%M:%S")
+            return a_datetime
+
+        elif isinstance(dtdt, unicode):
+            # 区别：一个是strp， 一个是strf
+            if dtdt.split(" ")[1:]:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d %H:%M:%S")
+                a_datetime = a_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d")
+                a_datetime = a_datetime.strftime("%Y-%m-%d")
+            return a_datetime

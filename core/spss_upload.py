@@ -9,8 +9,10 @@ from common.base import MongoDb, Config
 import time, os
 from collections import OrderedDict
 import pymysql
-from models.create_tables import create_tables, writer_tables, create_infor_tables
+from common.log import my_log
 from common.base import my_datetime
+from models.create_tables import create_data_table, writer_data_table
+from models.create_tables import create_information_tables, writer_information_tables
 
 vartypes = []  # ['A20', 'F8.2', 'F8', 'DATETIME20'] spss类型
 width = []  # ['20', '8.2', '8', '20'] 宽度
@@ -31,30 +33,66 @@ def read_sav(filepath):
         return read.formats, read.varNames, read.varLabels, read.valueLabels
 
 
+"""
 def writer_data(filepath, filename, valuetypes):
     res = writer_tables()
     res.conn()
+    with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
+        # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
+        my_time = my_datetime()
+        for i in read:
+            for j in range(len(valuetypes)):
+                # 数据库不认unicode所以要转换下
+                # 将varchar进行json存如数据库
+                if valuetypes[j] == "DATETIME":
+                    become_time = my_time.become_str(i[j])
+                    i[j] = become_time
+                elif valuetypes[j] == "VARCHAR":
+                    i[j] = json.dumps(i[j])
+            res.run_sql(filename, i)
+    res.close()
+    # try:
+    #     with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
+    #         # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
+    #         print valuetypes
+    #         print 'aaaaa',read[0]
+    #         my_time = my_datetime()
+    #         for i in read:
+    #             for j in range(len(valuetypes)):
+    #                 # 数据库不认unicode所以要转换下
+    #                 # 将varchar进行json存如数据库
+    #                 if valuetypes[j] == "DATETIME":
+    #                     become_time = my_time.become_str(i[j])
+    #                     i[j] = become_time
+    #                 elif valuetypes[j] == "VARCHAR":
+    #                     i[j] = json.dumps(i[j])
+    #             res.run_sql(filename, i)
+    # except Exception as e:
+    #     print e
+    # finally:
+    #     res.close()
+"""
 
-    try:
-        with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
-            # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
-            print valuetypes
-            print read[0]
-            my_time = my_datetime()
-            for i in read:
-                for j in range(len(valuetypes)):
-                    # 数据库不认unicode所以要转换下
-                    # 将varchar进行json存如数据库
-                    if valuetypes[j] == "DATETIME":
-                        become_time = my_time.become_str(i[j])
-                        i[j] = become_time
-                    elif valuetypes[j] == "VARCHAR":
-                        i[j] = json.dumps(i[j])
-                res.run_sql(filename, i)
-    except Exception as e:
-        print e
-    finally:
-        res.close()
+
+def writer_data(filepath, filename, valuetypes):
+    res = writer_data_table()
+    with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
+        # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
+        my_time = my_datetime()
+        for i in read:
+            for j in range(len(valuetypes)):
+                # 数据库不认unicode所以要转换下
+                # 将varchar进行json存如数据库
+                if valuetypes[j] == "DATETIME":
+                    become_time = my_time.become_str(i[j])
+                    i[j] = become_time
+                elif valuetypes[j] == "DATE":
+                    become_time = my_time.become_str(i[j])
+                    i[j] = become_time
+                elif valuetypes[j] == "VARCHAR":
+                    i[j] = json.dumps(i[j])
+            res.insert_sql(filename, i)
+    res.close()
 
 
 def get_spss_data(formats, varnames):
@@ -74,10 +112,15 @@ def get_spss_data(formats, varnames):
             width.append(ret)
             valuetypes.append("VARCHAR")
 
-        if formats[i].startswith("D"):
-            ret = formats[i].split("DATETIME")[1]
-            width.append(ret)
-            valuetypes.append("DATETIME")
+        elif formats[i].startswith("DATE"):
+            if formats[i].split("DATE")[1].startswith("TIME"):
+                ret = formats[i].split("DATETIME")[1]
+                width.append(ret)
+                valuetypes.append("DATETIME")
+            else:
+                ret = formats[i].split("DATE")[1]
+                width.append(ret)
+                valuetypes.append("DATE")
     return vartypes, width, valuetypes
 
 
@@ -89,6 +132,7 @@ def float_data(width):
             float_width.append(0)
     return float_width
 
+
 def valuelables_decode(unicode_dict):
     if isinstance(unicode_dict, dict):
         for i in unicode_dict:
@@ -97,51 +141,31 @@ def valuelables_decode(unicode_dict):
     elif isinstance(unicode_dict, str):
         return unicode_dict.decode('utf-8')
 
-class create_insert_sub_table(object):
-    def __init__(self):
-        pass
 
-    def create_table(self, filename):
-        # res = create_infor_tables()
-        # res.conn()
-        # sql = res.create_sql(filename)
-        # res.run_sql(sql)
-        # res.close()
-        try:
-            res = create_infor_tables()
-            res.conn()
-            sql = res.create_sql(filename)
-            res.run_sql(sql)
-            res.close()
-        except Exception as e:
-            print e
-            return 5001
-        return 2000
+def insert_sub_table(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes):
+    res = writer_information_tables()
 
-    def insert_data(self, filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes):
-        res = create_infor_tables()
-        res.conn()
+    for i in range(len(varnames)):
+        data = []
+        data.append(varnames[i])
+        data.append(valuetypes[i])
+        data.append(width[i])
+        data.append(float_width[i])
+        data.append(json.dumps(varLabels[varnames[i]]))
+        if varnames[i] in valueLabels:
+            unicode_dict = valuelables_decode(valueLabels[varnames[i]])
+            json_unicode_dict = pickle.dumps(unicode_dict)
+            # print json_unicode_dict
+            data.append(json_unicode_dict)
+        else:
+            data.append(0)
+        data.append(vartypes[i])
+        data.append("")
+        data.append("")
+        # sql = res.insert_sql(filename, data)
+        res.insert_sql(filename, data)
+    res.close()
 
-        for i in range(len(varnames)):
-            data = []
-            data.append(varnames[i])
-            data.append(valuetypes[i])
-            data.append(width[i])
-            data.append(float_width[i])
-            data.append(json.dumps(varLabels[varnames[i]]))
-            if varnames[i] in valueLabels:
-                unicode_dict = valuelables_decode(valueLabels[varnames[i]])
-                json_unicode_dict = pickle.dumps(unicode_dict)
-                # print json_unicode_dict
-                data.append(json_unicode_dict)
-            else:
-                data.append(0)
-            data.append(vartypes[i])
-            data.append("")
-            data.append("")
-            sql = res.insert_sql(filename, data)
-            res.run_sql(sql)
-        res.close()
 
 def cheng_time(dtdt):
     # 将时间类型转换成时间戳
@@ -156,7 +180,6 @@ def cheng_time(dtdt):
 
     elif isinstance(dtdt, float):
         return dtdt
-
 
 
 def main(filename):
@@ -180,8 +203,10 @@ def main(filename):
     float_width = float_data(width)
 
     # 创建表
-    ret = create_tables().run_sql(vartypes, width, valuetypes, formats, varnames, filename)
-    ret1 = create_insert_sub_table().create_table(filename)
+
+
+    create_data_table(vartypes, width, valuetypes, formats, varnames, filename)
+    create_information_tables(filename)
 
     # 写入数据
     writer_data(filepath, filename, valuetypes)
@@ -191,16 +216,14 @@ def main(filename):
                 pass
             else:
                 vartypes[i] = vartypes[i] + ".0"
-    create_insert_sub_table().insert_data(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes)
-    print vartypes
+    insert_sub_table(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes)
 
-    if ret==2000 and ret1 == 2000:
-        return ret
-    else:
-        return 5000
+    # if ret==2000 and ret1 == 2000:
+    #     return ret
+    # else:
+    #     return 5000
 
 
 if __name__ == '__main__':
     filename = "1111.sav"
     main(filename)
-
