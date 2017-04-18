@@ -25,3 +25,10 @@
 
 ## 删除所有.pyc文件的命令
 ```find 绝对路径  -type f -name  "*.pyc"  | xargs -i -t rm -f {}```
+
+## git上传命令
+```
+git add .
+git commit -m ""
+git push origin master
+```
