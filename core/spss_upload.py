@@ -20,60 +20,18 @@ valuetypes = []  # 数据类型
 float_width = []
 
 
+# 获取文件详细信息
 def read_sav(filepath):
-    # 得到columns
     with savReaderWriter.SavReader(filepath) as read:
         ret = read.getSavFileInfo()
         """
         # getsavfileinfo infomation :
-        # #(self.numVars, self.nCases, self.varNames, self.varTypes,self.formats, self.varLabels, self.valueLabels)
-                # for i in ret:
-        #     print i
+        # (self.numVars, self.nCases, self.varNames, self.varTypes,self.formats, self.varLabels, self.valueLabels)
         """
         return read.formats, read.varNames, read.varLabels, read.valueLabels
 
 
-"""
-def writer_data(filepath, filename, valuetypes):
-    res = writer_tables()
-    res.conn()
-    with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
-        # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
-        my_time = my_datetime()
-        for i in read:
-            for j in range(len(valuetypes)):
-                # 数据库不认unicode所以要转换下
-                # 将varchar进行json存如数据库
-                if valuetypes[j] == "DATETIME":
-                    become_time = my_time.become_str(i[j])
-                    i[j] = become_time
-                elif valuetypes[j] == "VARCHAR":
-                    i[j] = json.dumps(i[j])
-            res.run_sql(filename, i)
-    res.close()
-    # try:
-    #     with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
-    #         # 如果不用ioutf8， 汉字十六进制\被转义，更麻烦
-    #         print valuetypes
-    #         print 'aaaaa',read[0]
-    #         my_time = my_datetime()
-    #         for i in read:
-    #             for j in range(len(valuetypes)):
-    #                 # 数据库不认unicode所以要转换下
-    #                 # 将varchar进行json存如数据库
-    #                 if valuetypes[j] == "DATETIME":
-    #                     become_time = my_time.become_str(i[j])
-    #                     i[j] = become_time
-    #                 elif valuetypes[j] == "VARCHAR":
-    #                     i[j] = json.dumps(i[j])
-    #             res.run_sql(filename, i)
-    # except Exception as e:
-    #     print e
-    # finally:
-    #     res.close()
-"""
-
-
+# 写入数据到数据库
 def writer_data(filepath, filename, valuetypes):
     res = writer_data_table()
     with savReaderWriter.SavReader(filepath, ioUtf8=True) as read:
@@ -95,6 +53,7 @@ def writer_data(filepath, filename, valuetypes):
     res.close()
 
 
+# 获取spss需要的一些数据
 def get_spss_data(formats, varnames):
     for i in varnames:
         vartypes.append(formats[i])
@@ -124,6 +83,7 @@ def get_spss_data(formats, varnames):
     return vartypes, width, valuetypes
 
 
+# 进行切割,判断是不是有浮点位的,如果没有填充0,生成文件要用
 def float_data(width):
     for i in width:
         if i.split(".")[1:]:
@@ -133,6 +93,7 @@ def float_data(width):
     return float_width
 
 
+# 判断是字典还是字符串, 进行decode
 def valuelables_decode(unicode_dict):
     if isinstance(unicode_dict, dict):
         for i in unicode_dict:
@@ -142,6 +103,7 @@ def valuelables_decode(unicode_dict):
         return unicode_dict.decode('utf-8')
 
 
+# 插入信息表的数据
 def insert_sub_table(filename, varnames, valuetypes, width, float_width, varLabels, valueLabels, vartypes):
     res = writer_information_tables()
 
@@ -167,21 +129,6 @@ def insert_sub_table(filename, varnames, valuetypes, width, float_width, varLabe
     res.close()
 
 
-def cheng_time(dtdt):
-    # 将时间类型转换成时间戳
-    if isinstance(dtdt, datetime.datetime):
-        timestamp = time.mktime(dtdt.timetuple())
-        return timestamp
-
-    elif isinstance(dtdt, str):
-        a_datetime = datetime.datetime.strptime(dtdt, "%Y-%m-%d, %H:%M:%S, %w")
-        timestamp = time.mktime(a_datetime.timetuple())
-        return timestamp
-
-    elif isinstance(dtdt, float):
-        return dtdt
-
-
 def main(filename):
     # float_width: [0, 0, 0, 0, 0, 0, 0, 0, 0,....]
     # formats: {'Q2R7': 'F5', 'Q7': 'A400',....]
@@ -195,16 +142,14 @@ def main(filename):
     filepath = os.path.join(os.path.dirname(os.path.dirname(__file__)), "file", filename)
     # 得到文件信息
     formats, varnames, varLabels, valueLabels = read_sav(filepath)
-
-    if len(varnames) > 5400:
+    #不允许超过1024列MySQL
+    if len(varnames) > 1024:
         return 4001
 
     vartypes, width, valuetypes = get_spss_data(formats, varnames)
     float_width = float_data(width)
 
     # 创建表
-
-
     create_data_table(vartypes, width, valuetypes, formats, varnames, filename)
     create_information_tables(filename)
 
